@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Us 💗</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Nunito:wght@500;700&display=swap">
+<style>
+:root{--bg:#ffe8ef;--card:#fff8fa;--ink:#6b1b40;--soft:#a9627f;--pink:#ff4f8b;--blush:#ffb7cf;--line:#f6c9d8}
+*{box-sizing:border-box;margin:0}
+html,body{background:var(--bg);color:var(--ink);font-family:Nunito,system-ui,sans-serif;font-size:16px}
+body{padding:max(16px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom));max-width:480px;margin:0 auto}
+h1,h2{font-family:Fraunces,Georgia,serif}
+h1{font-size:28px;font-weight:800}
+h2{font-size:19px;font-weight:600;margin-bottom:10px}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.streak{background:var(--pink);color:#fff;border-radius:999px;padding:8px 14px;font-weight:700}
+.card{background:var(--card);border:1.5px solid var(--line);border-radius:22px;padding:16px;margin-bottom:14px}
+.mood{text-align:center}
+.face{font-size:72px;line-height:1.1;transition:transform .25s}
+.face.pop{transform:scale(1.25) rotate(-6deg)}
+input[type=range]{width:100%;accent-color:var(--pink);margin:12px 0}
+.label{font-weight:700;font-size:18px}
+.tips{list-style:none;padding:0;margin-top:10px;text-align:left}
+.tips li{padding:6px 0;color:var(--soft)}
+.task{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.task:first-of-type{border-top:0}
+.task.done .txt{text-decoration:line-through;color:var(--soft)}
+.txt{flex:1}
+button{font:inherit;font-weight:700;border:0;border-radius:999px;padding:9px 14px;cursor:pointer;background:var(--pink);color:#fff}
+button.ghost{background:transparent;color:var(--soft);padding:9px 8px}
+button:focus-visible,input:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.partner{display:flex;align-items:center;gap:12px}
+.partner .em{font-size:40px}
+.muted{color:var(--soft);font-size:14px}
+.who{display:flex;gap:10px;justify-content:center;margin-top:12px}
+.hint{font-size:13px;color:var(--soft);margin-top:6px}
+@media (prefers-reduced-motion:reduce){.face{transition:none}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* ===== SETUP: only DB_URL goes here. The secret name is asked inside the app. ===== */
+const DB_URL = "";            // e.g. "https://your-project-default-rtdb.firebaseio.com"
+let ROOM = localStorage.getItem("room") || ""; // secret code is typed on first open, never stored in this public file
+/* ============================================================ */
+
+const tg = window.Telegram && Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor("#ffe8ef"); tg.setBackgroundColor("#ffe8ef"); } catch(e){} }
+
+const MOODS = [
+ {e:"😭",n:"Really low",t:["Send me a selfie right now","Call me, I want to hear you","Drink water and sit with something warm"]},
+ {e:"😔",n:"A bit down",t:["Send a voice note","Share what you're eating","Take a short walk, then text me"]},
+ {e:"😐",n:"Okay",t:["Send a song you like today","Drink a glass of water","Text me one thing about your day"]},
+ {e:"😊",n:"Good",t:["Send an emoji for your mood","Video call for 5 minutes","Step outside for a walk"]},
+ {e:"🥰",n:"Glowing",t:["Send a selfie, show me that smile","Pamper yourself today","Tell me what made you happy"]}
+];
+const CORE = [
+ {id:"text",t:"Text me first 💬"},{id:"water",t:"Drink a glass of water 💧"},{id:"walk",t:"Take a walk, away from screens 🌿"}
+];
+const POOL = [
+ {id:"selfie",t:"Send me a selfie 🤳"},{id:"vcall",t:"Video call once today 📞"},{id:"eat",t:"Show me what you're eating 🍽️"},
+ {id:"emoji",t:"Send an emoji for how you feel 🫶"},{id:"song",t:"Send a song for me 🎵"},{id:"praise",t:"Send one compliment 💗"},
+ {id:"treat",t:"Send a sweet treat or order food for me 🍫"}
+];
+const SPICY = [{id:"spicy1",t:"Send a spicy surprise in your private chat 😏",spicy:1},{id:"spicy2",t:"Send a flirty pic, view-once, in your private chat 🔥",spicy:1}];
+
+const $ = s => document.querySelector(s);
+const today = () => new Date().toLocaleDateString("en-CA");
+const seed = s => { let h=0; for (const c of s) h=(h*31+c.charCodeAt(0))>>>0; return h; };
+function tasksFor(d){
+  let h = seed(d), tasks = [...CORE];
+  const pool = [...POOL];
+  for (let i=0;i<2;i++){ tasks.push(pool.splice(h % pool.length,1)[0]); h = Math.floor(h/7)+3; }
+  if (seed(d+"s") % 3 === 0) tasks.push(SPICY[seed(d+"x") % SPICY.length]);
+  return tasks;
+}
+
+/* storage: Firebase REST if DB_URL set, else this phone only */
+const path = p => `${DB_URL}/rooms/${ROOM}/${p}.json`;
+async function load(){
+  if (!DB_URL) return JSON.parse(localStorage.getItem("local")||"{}");
+  if (!ROOM) return {};
+  try { const r = await fetch(path("days")); return (await r.json()) || {}; } catch(e){ return {}; }
+}
+async function save(d, who, data){
+  if (!DB_URL){ const all = JSON.parse(localStorage.getItem("local")||"{}"); (all[d] ??= {})[who]=data; localStorage.setItem("local",JSON.stringify(all)); return; }
+  try { await fetch(path(`days/${d}/${who}`), {method:"PUT", body:JSON.stringify(data)}); } catch(e){}
+}
+
+let me = localStorage.getItem("who"), days = {}, D = today();
+const other = () => me === "him" ? "her" : "him";
+const mine = () => (days[D] ||= {})[me] ||= {mood:2, done:[], skip:[]};
+
+function complete(day, who){
+  const x = days[day]?.[who]; if (!x) return false;
+  return tasksFor(day).every(t => x.done.includes(t.id) || x.skip.includes(t.id));
+}
+function streak(){
+  let n = 0, d = new Date();
+  const k = x => x.toLocaleDateString("en-CA");
+  if (!(complete(k(d),"him") && complete(k(d),"her"))) d.setDate(d.getDate()-1);
+  while (complete(k(d),"him") && complete(k(d),"her")){ n++; d.setDate(d.getDate()-1); }
+  return n;
+}
+
+function render(){
+  const app = $("#app");
+  if (DB_URL && !ROOM){
+    app.innerHTML = `<div class="card" style="margin-top:40px;text-align:center"><h1>Us 💗</h1><p class="muted" style="margin:8px 0">Type your secret code (same on both phones)</p>
+    <input id="rc" style="width:100%;padding:10px;border-radius:12px;border:1.5px solid var(--line);font:inherit" autocomplete="off"><div class="who"><button id="go">Save</button></div></div>`;
+    $("#go").onclick = () => { const v = $("#rc").value.trim(); if (v.length < 8) return alert("Use at least 8 characters"); ROOM = v; localStorage.setItem("room", v); start(); };
+    return;
+  }
+  if (!me){
+    app.innerHTML = `<div class="card" style="margin-top:40px;text-align:center"><h1>Us 💗</h1><p class="muted" style="margin-top:8px">Who's using this phone?</p>
+    <div class="who"><button id="h">I'm him</button><button id="s">I'm her</button></div></div>`;
+    $("#h").onclick = () => pick("him"); $("#s").onclick = () => pick("her"); return;
+  }
+  const m = mine(), mood = MOODS[m.mood], p = days[D]?.[other()];
+  const tasks = tasksFor(D);
+  app.innerHTML = `
+  <div class="top"><h1>Us 💗</h1><div class="streak">🔥 ${streak()} day streak</div></div>
+  <div class="card mood"><h2>How are you today?</h2>
+    <div class="face" id="face">${mood.e}</div><div class="label">${mood.n}</div>
+    <input type="range" id="sl" min="0" max="4" value="${m.mood}" aria-label="Mood">
+    <ul class="tips">${mood.t.map(x=>`<li>💗 ${x}</li>`).join("")}</ul></div>
+  <div class="card"><h2>Today's tasks</h2>
+    ${tasks.map(t=>{const dn=m.done.includes(t.id), sk=m.skip.includes(t.id);
+      return `<div class="task ${dn||sk?"done":""}"><span class="txt">${t.t}${sk?" (skipped)":""}</span>
+      ${dn||sk?`<button class="ghost" data-undo="${t.id}">Undo</button>`:`<button data-done="${t.id}">Done</button>${t.spicy?`<button class="ghost" data-skip="${t.id}">Skip</button>`:""}`}</div>`}).join("")}
+    <p class="hint">Spicy ones are optional. Skipping never breaks the streak.</p></div>
+  <div class="card partner"><div class="em">${p?MOODS[p.mood].e:"💤"}</div>
+    <div><h2 style="margin:0">${other()==="her"?"Her":"His"} day</h2>
+    <div class="muted">${p?`${p.done.length} of ${tasks.length} tasks done`:"No check-in yet today"}</div></div></div>`;
+  $("#sl").oninput = e => { m.mood = +e.target.value; const f=$("#face"); f.textContent=MOODS[m.mood].e; f.classList.add("pop"); setTimeout(()=>f.classList.remove("pop"),200); };
+  $("#sl").onchange = async () => { await save(D, me, m); render(); };
+  document.querySelectorAll("[data-done]").forEach(b => b.onclick = () => change(b.dataset.done,"done"));
+  document.querySelectorAll("[data-skip]").forEach(b => b.onclick = () => change(b.dataset.skip,"skip"));
+  document.querySelectorAll("[data-undo]").forEach(b => b.onclick = () => change(b.dataset.undo,"undo"));
+}
+async function change(id, kind){
+  const m = mine();
+  m.done = m.done.filter(x=>x!==id); m.skip = m.skip.filter(x=>x!==id);
+  if (kind==="done") m.done.push(id); if (kind==="skip") m.skip.push(id);
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
+  await save(D, me, m); render();
+}
+function pick(w){ me = w; localStorage.setItem("who", w); start(); }
+async function start(){ days = await load(); render(); }
+start();
+setInterval(async () => { if (me){ D = today(); days = await load(); render(); } }, 30000);
+</script>
+</body>
+</html>
